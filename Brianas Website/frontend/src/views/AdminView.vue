@@ -1,0 +1,632 @@
+<script setup>
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+const users = ref([])
+const form = ref({
+  firstName: '',
+  lastName: '',
+  email: '',
+  password: '',
+  role: 'USER',
+})
+const error = ref('')
+const status = ref({
+  backend: 'checking',
+  database: 'checking',
+})
+const statusTimer = ref(null)
+const editingUserId = ref(null)
+const editForm = ref({ firstName: '', lastName: '', email: '', role: 'USER' })
+const savingUserId = ref(null)
+const saveMessage = ref('')
+const searchQuery = ref('')
+const roleFilter = ref('ALL')
+
+const API_URL = '/api/users'
+const STATUS_URL = '/api/health/status'
+
+const filteredUsers = computed(() => {
+  const query = searchQuery.value.trim().toLowerCase()
+
+  return users.value.filter((user) => {
+    const matchesQuery = !query || [user.firstName, user.lastName, user.email]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(query)
+    const matchesRole = roleFilter.value === 'ALL' || (user.role || 'USER') === roleFilter.value
+    return matchesQuery && matchesRole
+  })
+})
+
+const clearFilters = () => {
+  searchQuery.value = ''
+  roleFilter.value = 'ALL'
+}
+
+const setStatus = (payload) => {
+  status.value = {
+    backend: payload?.backend === 'connected' ? 'connected' : 'disconnected',
+    database: payload?.database === 'connected' ? 'connected' : 'disconnected',
+  }
+}
+
+const loadStatus = async () => {
+  try {
+    const response = await fetch(STATUS_URL)
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}))
+      setStatus(payload)
+      return
+    }
+
+    const payload = await response.json()
+    setStatus(payload)
+  } catch (err) {
+    status.value = {
+      backend: 'disconnected',
+      database: 'disconnected',
+    }
+  }
+}
+
+const loadUsers = async () => {
+  try {
+    const response = await fetch(API_URL)
+    if (!response.ok) {
+      throw new Error('Unable to fetch users')
+    }
+    users.value = await response.json()
+  } catch (err) {
+    error.value = err.message || 'Could not load users.'
+  }
+}
+
+const submitUser = async () => {
+  error.value = ''
+
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form.value),
+    })
+
+    if (!response.ok) {
+      let message = 'User could not be created.'
+      try {
+        const payload = await response.json()
+        message = payload.message || payload.error || message
+      } catch {
+        // ignore non-json errors
+      }
+      throw new Error(message)
+    }
+
+    form.value = { firstName: '', lastName: '', email: '', password: '', role: 'USER' }
+    await loadUsers()
+  } catch (err) {
+    error.value = err.message || 'Something went wrong.'
+  }
+}
+
+const deleteUser = async (id) => {
+  const user = users.value.find((item) => item.id === id)
+  const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'this user'
+
+  if (!window.confirm(`Delete ${name}? This action cannot be undone.`)) {
+    return
+  }
+
+  error.value = ''
+  try {
+    const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE' })
+    if (!response.ok) {
+      throw new Error('User could not be deleted.')
+    }
+    await loadUsers()
+  } catch (err) {
+    error.value = err.message || 'Failed to delete user.'
+  }
+}
+
+const startEdit = (user) => {
+  editingUserId.value = user.id
+  editForm.value = {
+    firstName: user.firstName,
+    lastName: user.lastName,
+    email: user.email,
+    role: user.role || 'USER',
+  }
+}
+
+const cancelEdit = () => {
+  editingUserId.value = null
+}
+
+const updateUser = async (id) => {
+  error.value = ''
+  saveMessage.value = ''
+  savingUserId.value = id
+
+  try {
+    const response = await fetch(`${API_URL}/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(editForm.value),
+    })
+
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}))
+      throw new Error(payload.message || 'User could not be updated.')
+    }
+
+    editingUserId.value = null
+    saveMessage.value = 'User updated successfully.'
+    await loadUsers()
+  } catch (err) {
+    error.value = err.message || 'Could not update user.'
+  } finally {
+    savingUserId.value = null
+  }
+}
+
+const logout = () => {
+  localStorage.removeItem('user')
+  router.push('/')
+}
+
+const startStatusPolling = () => {
+  loadStatus()
+  statusTimer.value = setInterval(loadStatus, 5000)
+}
+
+onMounted(() => {
+  let savedUser
+  try {
+    savedUser = JSON.parse(localStorage.getItem('user') || 'null')
+  } catch {
+    savedUser = null
+  }
+
+  if (savedUser?.role !== 'ADMIN') {
+    router.push('/')
+    return
+  }
+
+  loadUsers()
+  startStatusPolling()
+})
+
+onBeforeUnmount(() => {
+  if (statusTimer.value) {
+    clearInterval(statusTimer.value)
+  }
+})
+</script>
+
+<template>
+  <main class="page">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Admin Portal</p>
+        <h1>System Management</h1>
+      </div>
+      <div class="topbar-actions">
+        <RouterLink class="home-button" to="/">Home</RouterLink>
+        <RouterLink class="home-button" to="/admin/listings">Manage listings</RouterLink>
+        <button class="logout" type="button" @click="logout">Logout</button>
+      </div>
+    </header>
+
+    <section class="card status-card">
+      <div class="status-header">
+        <h2>System Status</h2>
+      </div>
+
+      <div class="status-grid">
+        <div class="status-item">
+          <span class="status-label">Backend</span>
+          <span :class="['status-pill', status.backend]">
+            {{ status.backend === 'connected' ? 'Connected' : status.backend === 'checking' ? 'Checking...' : 'Disconnected' }}
+          </span>
+        </div>
+
+        <div class="status-item">
+          <span class="status-label">Database</span>
+          <span :class="['status-pill', status.database]">
+            {{ status.database === 'connected' ? 'Connected' : status.database === 'checking' ? 'Checking...' : 'Disconnected' }}
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>User Management</h2>
+
+      <form class="user-form" @submit.prevent="submitUser">
+        <div class="field-group">
+          <label for="firstName">First Name</label>
+          <input id="firstName" v-model="form.firstName" type="text" required />
+        </div>
+
+        <div class="field-group">
+          <label for="lastName">Last Name</label>
+          <input id="lastName" v-model="form.lastName" type="text" required />
+        </div>
+
+        <div class="field-group">
+          <label for="email">Email</label>
+          <input id="email" v-model="form.email" type="email" required />
+        </div>
+
+        <div class="field-group">
+          <label for="password">Password</label>
+          <input id="password" v-model="form.password" type="password" minlength="8" required />
+        </div>
+
+        <div class="field-group">
+          <label for="role">Role</label>
+          <select id="role" v-model="form.role" required>
+            <option value="ADMIN">Admin</option>
+            <option value="MANAGER">Manager</option>
+            <option value="AGENT">Agent</option>
+            <option value="USER">User</option>
+          </select>
+        </div>
+
+        <button type="submit">Create User</button>
+      </form>
+
+      <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="saveMessage" class="success">{{ saveMessage }}</p>
+    </section>
+
+    <section class="card">
+      <h2>Current Users</h2>
+
+      <div class="user-filters">
+        <label class="search-field" for="user-search">
+          Search accounts
+          <input id="user-search" v-model="searchQuery" type="search" placeholder="Name or email" />
+        </label>
+
+        <label class="role-filter" for="role-filter">
+          Role
+          <select id="role-filter" v-model="roleFilter">
+            <option value="ALL">All roles</option>
+            <option value="ADMIN">Admin</option>
+            <option value="MANAGER">Manager</option>
+            <option value="AGENT">Agent</option>
+            <option value="USER">User</option>
+          </select>
+        </label>
+
+        <button class="clear-filters" type="button" :disabled="!searchQuery && roleFilter === 'ALL'" @click="clearFilters">Clear</button>
+        <span class="result-count">{{ filteredUsers.length }} of {{ users.length }} accounts</span>
+      </div>
+
+      <ul v-if="filteredUsers.length" class="user-list">
+        <li v-for="user in filteredUsers" :key="user.id" class="user-item">
+          <form v-if="editingUserId === user.id" class="edit-form" @submit.prevent="updateUser(user.id)">
+            <input v-model="editForm.firstName" type="text" required aria-label="First name" />
+            <input v-model="editForm.lastName" type="text" required aria-label="Last name" />
+            <input v-model="editForm.email" type="email" required aria-label="Email" />
+            <select v-model="editForm.role" required aria-label="Role">
+              <option value="ADMIN">Admin</option>
+              <option value="MANAGER">Manager</option>
+              <option value="AGENT">Agent</option>
+              <option value="USER">User</option>
+            </select>
+            <button class="save" type="submit" :disabled="savingUserId === user.id">
+              <span v-if="savingUserId === user.id" class="spinner" aria-hidden="true"></span>
+              {{ savingUserId === user.id ? 'Saving...' : 'Save' }}
+            </button>
+            <button class="cancel" type="button" :disabled="savingUserId === user.id" @click="cancelEdit">Cancel</button>
+          </form>
+          <div v-else>
+            <strong>{{ user.firstName }} {{ user.lastName }}</strong>
+            <span>{{ user.email }}</span>
+            <span class="role-badge">{{ user.role || 'USER' }}</span>
+          </div>
+          <div v-if="editingUserId !== user.id" class="user-actions">
+            <button class="edit" type="button" @click="startEdit(user)">Edit</button>
+            <button class="danger" type="button" @click="deleteUser(user.id)">Delete</button>
+          </div>
+        </li>
+      </ul>
+
+      <p v-else class="empty">{{ users.length ? 'No users match these filters.' : 'No users yet.' }}</p>
+    </section>
+  </main>
+</template>
+
+<style scoped>
+.page {
+  min-height: 100vh;
+  display: grid;
+  gap: 1.5rem;
+  padding: 2rem;
+  background: #f3f4f6;
+  font-family: Arial, sans-serif;
+}
+
+.topbar {
+  width: min(960px, 100%);
+  margin: 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.topbar-actions, .user-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.home-button {
+  padding: 0.8rem 1.1rem;
+  border-radius: 10px;
+  color: #374151;
+  background: white;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.7rem;
+  color: #3b82f6;
+  font-weight: 700;
+  margin: 0 0 0.25rem;
+}
+
+h1, h2 {
+  margin: 0;
+  color: #111827;
+}
+
+.card {
+  width: min(960px, 100%);
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  padding: 2rem;
+  margin: 0 auto;
+}
+
+.status-card {
+  display: grid;
+  gap: 1rem;
+}
+
+.status-grid {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f9fafb;
+}
+
+.status-label {
+  font-weight: 700;
+  color: #374151;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  padding: 0.45rem 0.8rem;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.status-pill.connected {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-pill.disconnected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-pill.checking {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.user-form {
+  display: grid;
+  gap: 1rem;
+}
+
+.field-group {
+  display: grid;
+  gap: 0.4rem;
+}
+
+label {
+  font-weight: 600;
+  color: #374151;
+}
+
+input, select {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #d1d5db;
+  border-radius: 10px;
+  font-size: 1rem;
+}
+
+button {
+  border: none;
+  border-radius: 10px;
+  padding: 0.8rem 1.1rem;
+  background: #2563eb;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+.logout {
+  background: #111827;
+}
+
+.logout:hover {
+  background: #1f2937;
+}
+
+.danger {
+  background: #dc2626;
+}
+
+.danger:hover {
+  background: #b91c1c;
+}
+
+.edit {
+  background: #4b5563;
+}
+
+.edit:hover {
+  background: #374151;
+}
+
+.edit-form {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.edit-form input, .edit-form select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 0.7rem;
+  font-size: 0.9rem;
+}
+
+.edit-form button {
+  padding: 0.65rem 0.8rem;
+  white-space: nowrap;
+}
+
+.save {
+  background: #166534;
+}
+
+.save:hover {
+  background: #14532d;
+}
+
+.save:disabled, .cancel:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.spinner {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: 0.35rem;
+  vertical-align: -0.1rem;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.cancel {
+  background: #6b7280;
+}
+
+.cancel:hover {
+  background: #4b5563;
+}
+
+.user-list {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.user-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 0.9rem 1rem;
+}
+
+.user-item div {
+  display: grid;
+}
+
+.user-item span {
+  color: #6b7280;
+}
+
+.error {
+  color: #b91c1c;
+  font-weight: 600;
+  margin-top: 1rem;
+}
+
+.empty {
+  color: #6b7280;
+  margin-top: 1rem;
+}
+
+.success {
+  color: #166534;
+  font-weight: 600;
+  margin-top: 1rem;
+}
+
+@media (max-width: 760px) {
+  .topbar, .user-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .topbar-actions, .user-actions {
+    justify-content: flex-end;
+  }
+
+  .edit-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+</style>
