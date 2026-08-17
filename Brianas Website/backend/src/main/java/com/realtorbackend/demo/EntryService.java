@@ -29,8 +29,9 @@ public class EntryService {
                 || entry.getCity() == null || entry.getCity().isBlank()
                 || entry.getState() == null || entry.getState().isBlank()
                 || entry.getZipcode() == null || entry.getZipcode().isBlank()
-                || entry.getPrice() == null || entry.getPrice().signum() < 0) {
-            throw new IllegalArgumentException("Address, city, state, zipcode, and a valid price are required");
+                || entry.getPrice() == null || entry.getPrice().signum() < 0
+                || entry.getDescription() == null || entry.getDescription().isBlank()) {
+            throw new IllegalArgumentException("Address, city, state, zipcode, description, and a valid price are required");
         }
         if (!"ACTIVE".equals(entry.getStatus()) && !"CLOSED".equals(entry.getStatus())) {
             throw new IllegalArgumentException("Listing status must be ACTIVE or CLOSED");
@@ -63,6 +64,7 @@ public class EntryService {
         existing.setState(changes.getState());
         existing.setZipcode(changes.getZipcode());
         existing.setPrice(changes.getPrice());
+        existing.setDescription(changes.getDescription());
         existing.setPictureUrl(changes.getPictureUrl());
         existing.setPictureUrls(changes.getPictureUrls());
         existing.setStatus(changes.getStatus());
@@ -75,8 +77,9 @@ public class EntryService {
                 || entry.getCity() == null || entry.getCity().isBlank()
                 || entry.getState() == null || entry.getState().isBlank()
                 || entry.getZipcode() == null || entry.getZipcode().isBlank()
-                || entry.getPrice() == null || entry.getPrice().signum() < 0) {
-            throw new IllegalArgumentException("Address, city, state, zipcode, and a valid price are required");
+                || entry.getPrice() == null || entry.getPrice().signum() < 0
+                || entry.getDescription() == null || entry.getDescription().isBlank()) {
+            throw new IllegalArgumentException("Address, city, state, zipcode, description, and a valid price are required");
         }
         if (!"ACTIVE".equals(entry.getStatus()) && !"CLOSED".equals(entry.getStatus())) {
             throw new IllegalArgumentException("Listing status must be ACTIVE or CLOSED");

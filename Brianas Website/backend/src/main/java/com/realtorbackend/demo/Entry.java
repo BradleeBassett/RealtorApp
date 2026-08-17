@@ -10,6 +10,7 @@ public class Entry {
     private String state;
     private String zipcode;
     private java.math.BigDecimal price;
+    private String description;
     private String pictureUrl;
     private List<String> pictureUrls = new ArrayList<>();
     private String status = "ACTIVE";
@@ -75,6 +76,14 @@ public class Entry {
 
     public void setPrice(java.math.BigDecimal price) {
         this.price = price;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 
     public String getPictureUrl() {

@@ -1,13 +1,16 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { clearAuthSession, getAuthHeaders } from '../utils/auth'
 
 const router = useRouter()
 const users = ref([])
 const form = ref({
   firstName: '',
   lastName: '',
+  phoneNumber: '',
   email: '',
+  description: '',
   password: '',
   role: 'USER',
 })
@@ -18,7 +21,7 @@ const status = ref({
 })
 const statusTimer = ref(null)
 const editingUserId = ref(null)
-const editForm = ref({ firstName: '', lastName: '', email: '', role: 'USER' })
+const editForm = ref({ firstName: '', lastName: '', phoneNumber: '', email: '', description: '', role: 'USER' })
 const savingUserId = ref(null)
 const saveMessage = ref('')
 const searchQuery = ref('')
@@ -31,11 +34,13 @@ const filteredUsers = computed(() => {
   const query = searchQuery.value.trim().toLowerCase()
 
   return users.value.filter((user) => {
-    const matchesQuery = !query || [user.firstName, user.lastName, user.email]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-      .includes(query)
+    const matchesQuery =
+      !query ||
+      [user.firstName, user.lastName, user.phoneNumber, user.email]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query)
     const matchesRole = roleFilter.value === 'ALL' || (user.role || 'USER') === roleFilter.value
     return matchesQuery && matchesRole
   })
@@ -74,7 +79,7 @@ const loadStatus = async () => {
 
 const loadUsers = async () => {
   try {
-    const response = await fetch(API_URL)
+    const response = await fetch(API_URL, { headers: getAuthHeaders() })
     if (!response.ok) {
       throw new Error('Unable to fetch users')
     }
@@ -90,7 +95,7 @@ const submitUser = async () => {
   try {
     const response = await fetch(API_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(form.value),
     })
 
@@ -105,7 +110,7 @@ const submitUser = async () => {
       throw new Error(message)
     }
 
-    form.value = { firstName: '', lastName: '', email: '', password: '', role: 'USER' }
+    form.value = { firstName: '', lastName: '', phoneNumber: '', email: '', description: '', password: '', role: 'USER' }
     await loadUsers()
   } catch (err) {
     error.value = err.message || 'Something went wrong.'
@@ -122,7 +127,7 @@ const deleteUser = async (id) => {
 
   error.value = ''
   try {
-    const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE' })
+    const response = await fetch(`${API_URL}/${id}`, { method: 'DELETE', headers: getAuthHeaders() })
     if (!response.ok) {
       throw new Error('User could not be deleted.')
     }
@@ -137,7 +142,9 @@ const startEdit = (user) => {
   editForm.value = {
     firstName: user.firstName,
     lastName: user.lastName,
+    phoneNumber: user.phoneNumber || '',
     email: user.email,
+    description: user.description || '',
     role: user.role || 'USER',
   }
 }
@@ -149,12 +156,24 @@ const cancelEdit = () => {
 const updateUser = async (id) => {
   error.value = ''
   saveMessage.value = ''
+
+  const user = users.value.find((item) => item.id === id)
+  const currentRole = user?.role || 'USER'
+  const name = [user?.firstName, user?.lastName].filter(Boolean).join(' ') || 'this user'
+
+  if (
+    editForm.value.role !== currentRole &&
+    !window.confirm(`Change ${name}'s role from ${currentRole} to ${editForm.value.role}?`)
+  ) {
+    return
+  }
+
   savingUserId.value = id
 
   try {
     const response = await fetch(`${API_URL}/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
       body: JSON.stringify(editForm.value),
     })
 
@@ -174,7 +193,7 @@ const updateUser = async (id) => {
 }
 
 const logout = () => {
-  localStorage.removeItem('user')
+  clearAuthSession()
   router.push('/')
 }
 
@@ -230,14 +249,26 @@ onBeforeUnmount(() => {
         <div class="status-item">
           <span class="status-label">Backend</span>
           <span :class="['status-pill', status.backend]">
-            {{ status.backend === 'connected' ? 'Connected' : status.backend === 'checking' ? 'Checking...' : 'Disconnected' }}
+            {{
+              status.backend === 'connected'
+                ? 'Connected'
+                : status.backend === 'checking'
+                  ? 'Checking...'
+                  : 'Disconnected'
+            }}
           </span>
         </div>
 
         <div class="status-item">
           <span class="status-label">Database</span>
           <span :class="['status-pill', status.database]">
-            {{ status.database === 'connected' ? 'Connected' : status.database === 'checking' ? 'Checking...' : 'Disconnected' }}
+            {{
+              status.database === 'connected'
+                ? 'Connected'
+                : status.database === 'checking'
+                  ? 'Checking...'
+                  : 'Disconnected'
+            }}
           </span>
         </div>
       </div>
@@ -260,6 +291,16 @@ onBeforeUnmount(() => {
         <div class="field-group">
           <label for="email">Email</label>
           <input id="email" v-model="form.email" type="email" required />
+        </div>
+
+        <div class="field-group">
+          <label for="phoneNumber">Phone Number</label>
+          <input id="phoneNumber" v-model="form.phoneNumber" type="tel" autocomplete="tel" required />
+        </div>
+
+        <div class="field-group">
+          <label for="description">Notes</label>
+          <textarea id="description" v-model="form.description" rows="3"></textarea>
         </div>
 
         <div class="field-group">
@@ -304,31 +345,48 @@ onBeforeUnmount(() => {
           </select>
         </label>
 
-        <button class="clear-filters" type="button" :disabled="!searchQuery && roleFilter === 'ALL'" @click="clearFilters">Clear</button>
+        <button
+          class="clear-filters"
+          type="button"
+          :disabled="!searchQuery && roleFilter === 'ALL'"
+          @click="clearFilters"
+        >
+          Clear
+        </button>
         <span class="result-count">{{ filteredUsers.length }} of {{ users.length }} accounts</span>
       </div>
 
       <ul v-if="filteredUsers.length" class="user-list">
         <li v-for="user in filteredUsers" :key="user.id" class="user-item">
-          <form v-if="editingUserId === user.id" class="edit-form" @submit.prevent="updateUser(user.id)">
-            <input v-model="editForm.firstName" type="text" required aria-label="First name" />
-            <input v-model="editForm.lastName" type="text" required aria-label="Last name" />
-            <input v-model="editForm.email" type="email" required aria-label="Email" />
-            <select v-model="editForm.role" required aria-label="Role">
-              <option value="ADMIN">Admin</option>
-              <option value="MANAGER">Manager</option>
-              <option value="AGENT">Agent</option>
-              <option value="USER">User</option>
-            </select>
+          <form
+            v-if="editingUserId === user.id"
+            class="edit-form"
+            @submit.prevent="updateUser(user.id)"
+          >
+            <label>First name<input v-model="editForm.firstName" type="text" required /></label>
+            <label>Last name<input v-model="editForm.lastName" type="text" required /></label>
+            <label>Phone number<input v-model="editForm.phoneNumber" type="tel" required /></label>
+            <label>Email<input v-model="editForm.email" type="email" required /></label>
+            <label class="edit-notes">Notes<textarea v-model="editForm.description" rows="2"></textarea></label>
+            <label>Role<select v-model="editForm.role" required><option value="ADMIN">Admin</option><option value="MANAGER">Manager</option><option value="AGENT">Agent</option><option value="USER">User</option></select></label>
             <button class="save" type="submit" :disabled="savingUserId === user.id">
               <span v-if="savingUserId === user.id" class="spinner" aria-hidden="true"></span>
               {{ savingUserId === user.id ? 'Saving...' : 'Save' }}
             </button>
-            <button class="cancel" type="button" :disabled="savingUserId === user.id" @click="cancelEdit">Cancel</button>
+            <button
+              class="cancel"
+              type="button"
+              :disabled="savingUserId === user.id"
+              @click="cancelEdit"
+            >
+              Cancel
+            </button>
           </form>
           <div v-else>
             <strong>{{ user.firstName }} {{ user.lastName }}</strong>
             <span>{{ user.email }}</span>
+            <span>{{ user.phoneNumber || 'No phone number' }}</span>
+            <span class="user-description"><strong>Notes:</strong> {{ user.description || 'No notes' }}</span>
             <span class="role-badge">{{ user.role || 'USER' }}</span>
           </div>
           <div v-if="editingUserId !== user.id" class="user-actions">
@@ -338,7 +396,9 @@ onBeforeUnmount(() => {
         </li>
       </ul>
 
-      <p v-else class="empty">{{ users.length ? 'No users match these filters.' : 'No users yet.' }}</p>
+      <p v-else class="empty">
+        {{ users.length ? 'No users match these filters.' : 'No users yet.' }}
+      </p>
     </section>
   </main>
 </template>
@@ -362,7 +422,8 @@ onBeforeUnmount(() => {
   gap: 1rem;
 }
 
-.topbar-actions, .user-actions {
+.topbar-actions,
+.user-actions {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -386,7 +447,8 @@ onBeforeUnmount(() => {
   margin: 0 0 0.25rem;
 }
 
-h1, h2 {
+h1,
+h2 {
   margin: 0;
   color: #111827;
 }
@@ -469,7 +531,9 @@ label {
   color: #374151;
 }
 
-input, select {
+input,
+select,
+textarea {
   padding: 0.75rem 0.9rem;
   border: 1px solid #d1d5db;
   border-radius: 10px;
@@ -522,7 +586,9 @@ button:hover {
   align-items: center;
 }
 
-.edit-form input, .edit-form select {
+.edit-form input,
+.edit-form select,
+.edit-form textarea {
   min-width: 0;
   width: 100%;
   box-sizing: border-box;
@@ -530,9 +596,25 @@ button:hover {
   font-size: 0.9rem;
 }
 
+.edit-form label {
+  min-width: 0;
+  display: grid;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+}
+
 .edit-form button {
   padding: 0.65rem 0.8rem;
   white-space: nowrap;
+}
+
+.edit-form .edit-notes {
+  grid-column: 1 / -1;
+}
+
+.edit-form textarea {
+  min-height: 4.5rem;
+  resize: vertical;
 }
 
 .save {
@@ -543,7 +625,8 @@ button:hover {
   background: #14532d;
 }
 
-.save:disabled, .cancel:disabled {
+.save:disabled,
+.cancel:disabled {
   cursor: wait;
   opacity: 0.7;
 }
@@ -561,7 +644,9 @@ button:hover {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .cancel {
@@ -570,6 +655,37 @@ button:hover {
 
 .cancel:hover {
   background: #4b5563;
+}
+
+.user-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: end;
+  gap: 1rem;
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.user-filters label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.user-filters input,
+.user-filters select,
+.clear-filters {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.result-count {
+  align-self: center;
+  color: #475569;
+  font-size: 0.9rem;
+  text-align: center;
 }
 
 .user-list {
@@ -598,6 +714,12 @@ button:hover {
   color: #6b7280;
 }
 
+.user-description {
+  max-width: 42rem;
+  margin-top: 0.25rem;
+  white-space: pre-wrap;
+}
+
 .error {
   color: #b91c1c;
   font-weight: 600;
@@ -616,17 +738,23 @@ button:hover {
 }
 
 @media (max-width: 760px) {
-  .topbar, .user-item {
+  .topbar,
+  .user-item {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .topbar-actions, .user-actions {
+  .topbar-actions,
+  .user-actions {
     justify-content: flex-end;
   }
 
   .edit-form {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .user-filters {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -4,7 +4,9 @@ const fallbackName = '[Your name]'
 export const getStoredUserName = (storage = globalThis.localStorage) => {
   try {
     const user = JSON.parse(storage?.getItem('user') || 'null')
-    return [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || fallbackName
+    return (
+      [user?.firstName, user?.lastName].filter(Boolean).join(' ') || user?.email || fallbackName
+    )
   } catch {
     return fallbackName
   }

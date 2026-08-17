@@ -16,7 +16,10 @@ public class JdbcUserRepository implements UserRepository {
         user.setId(rs.getLong("id"));
         user.setFirstName(rs.getString("first_name"));
         user.setLastName(rs.getString("last_name"));
+        user.setPhoneNumber(rs.getString("phone_number"));
         user.setEmail(rs.getString("email"));
+        user.setDescription(rs.getString("description"));
+        user.setEmailVerified(rs.getBoolean("email_verified"));
         user.setRole(rs.getString("role"));
         user.setPasswordHash(rs.getString("password_hash"));
         return user;
@@ -28,20 +31,20 @@ public class JdbcUserRepository implements UserRepository {
 
     @Override
     public List<User> findAll() {
-        String sql = "SELECT id, first_name, last_name, email, role, password_hash FROM users ORDER BY id";
+        String sql = "SELECT id, first_name, last_name, phone_number, email, description, email_verified, role, password_hash FROM users ORDER BY id";
         return jdbcTemplate.query(sql, ROW_MAPPER);
     }
 
     @Override
     public Optional<User> findById(Long id) {
-        String sql = "SELECT id, first_name, last_name, email, role, password_hash FROM users WHERE id = ?";
+        String sql = "SELECT id, first_name, last_name, phone_number, email, description, email_verified, role, password_hash FROM users WHERE id = ?";
         List<User> rows = jdbcTemplate.query(sql, ROW_MAPPER, id);
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
     @Override
     public Optional<User> findByEmail(String email) {
-        String sql = "SELECT id, first_name, last_name, email, role, password_hash FROM users WHERE email = ?";
+        String sql = "SELECT id, first_name, last_name, phone_number, email, description, email_verified, role, password_hash FROM users WHERE email = ?";
         List<User> rows = jdbcTemplate.query(sql, ROW_MAPPER, email);
         return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
@@ -53,13 +56,16 @@ public class JdbcUserRepository implements UserRepository {
         }
 
         if (user.getId() == null) {
-            String sql = "INSERT INTO users (first_name, last_name, email, role, password_hash) VALUES (?, ?, ?, ?, ?) RETURNING id";
+            String sql = "INSERT INTO users (first_name, last_name, phone_number, email, description, email_verified, role, password_hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id";
             Long generatedId = jdbcTemplate.queryForObject(
                     sql,
                     Long.class,
                     user.getFirstName(),
                     user.getLastName(),
+                    user.getPhoneNumber(),
                     user.getEmail(),
+                    user.getDescription(),
+                    user.isEmailVerified(),
                     user.getRole().name(),
                     user.getPasswordHash()
             );
@@ -69,8 +75,8 @@ public class JdbcUserRepository implements UserRepository {
             return user;
         }
 
-        String sql = "UPDATE users SET first_name = ?, last_name = ?, email = ?, role = ?, password_hash = ? WHERE id = ?";
-        jdbcTemplate.update(sql, user.getFirstName(), user.getLastName(), user.getEmail(), user.getRole().name(), user.getPasswordHash(), user.getId());
+        String sql = "UPDATE users SET first_name = ?, last_name = ?, phone_number = ?, email = ?, description = ?, email_verified = ?, role = ?, password_hash = ? WHERE id = ?";
+        jdbcTemplate.update(sql, user.getFirstName(), user.getLastName(), user.getPhoneNumber(), user.getEmail(), user.getDescription(), user.isEmailVerified(), user.getRole().name(), user.getPasswordHash(), user.getId());
         return user;
     }
 

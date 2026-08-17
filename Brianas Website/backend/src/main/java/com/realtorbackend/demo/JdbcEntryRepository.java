@@ -18,7 +18,8 @@ public class JdbcEntryRepository implements EntryRepository {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final RowMapper<Entry> ROW_MAPPER = (rs, rowNum) -> new Entry(
+        private static final RowMapper<Entry> ROW_MAPPER = (rs, rowNum) -> {
+        Entry entry = new Entry(
             rs.getLong("id"),
             rs.getString("address"),
             rs.getString("city"),
@@ -27,23 +28,26 @@ public class JdbcEntryRepository implements EntryRepository {
             rs.getBigDecimal("price"),
             rs.getString("picture_url"),
             rs.getString("status")
-    );
+        );
+        entry.setDescription(rs.getString("description"));
+        return entry;
+        };
 
     public JdbcEntryRepository(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
         jdbcTemplate.execute("ALTER TABLE entries DROP COLUMN IF EXISTS name");
-        jdbcTemplate.execute("ALTER TABLE entries DROP COLUMN IF EXISTS description");
+        jdbcTemplate.execute("ALTER TABLE entries ADD COLUMN IF NOT EXISTS description TEXT");
     }
 
     @Override
     public List<Entry> findAll() {
-        String sql = "SELECT id, address, city, state, zipcode, price, picture_url, status, picture_urls FROM entries ORDER BY id DESC";
+        String sql = "SELECT id, address, city, state, zipcode, price, description, picture_url, status, picture_urls FROM entries ORDER BY id DESC";
         return withGalleries(jdbcTemplate.query(sql, ROW_MAPPER));
     }
 
     @Override
     public Optional<Entry> findById(Long id) {
-        String sql = "SELECT id, address, city, state, zipcode, price, picture_url, status, picture_urls FROM entries WHERE id = ?";
+        String sql = "SELECT id, address, city, state, zipcode, price, description, picture_url, status, picture_urls FROM entries WHERE id = ?";
         List<Entry> rows = jdbcTemplate.query(sql, ROW_MAPPER, id);
         return rows.isEmpty() ? Optional.empty() : Optional.of(withGalleries(rows).get(0));
     }
@@ -51,7 +55,7 @@ public class JdbcEntryRepository implements EntryRepository {
     @Override
     public Entry save(Entry entry) {
         if (entry.getId() == null) {
-            String sql = "INSERT INTO entries (address, city, state, zipcode, price, picture_url, status, picture_urls) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+            String sql = "INSERT INTO entries (address, city, state, zipcode, price, description, picture_url, status, picture_urls) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
             KeyHolder keyHolder = new GeneratedKeyHolder();
             jdbcTemplate.update(connection -> {
                 PreparedStatement ps = connection.prepareStatement(sql, new String[] { "id" });
@@ -60,9 +64,10 @@ public class JdbcEntryRepository implements EntryRepository {
                 ps.setString(3, entry.getState());
                 ps.setString(4, entry.getZipcode());
                 ps.setBigDecimal(5, entry.getPrice());
-                ps.setString(6, entry.getPictureUrl());
-                ps.setString(7, entry.getStatus());
-                ps.setString(8, writePictures(entry));
+                ps.setString(6, entry.getDescription());
+                ps.setString(7, entry.getPictureUrl());
+                ps.setString(8, entry.getStatus());
+                ps.setString(9, writePictures(entry));
                 return ps;
             }, keyHolder);
 
@@ -73,9 +78,9 @@ public class JdbcEntryRepository implements EntryRepository {
             return entry;
         }
 
-        String sql = "UPDATE entries SET address = ?, city = ?, state = ?, zipcode = ?, price = ?, picture_url = ?, status = ?, picture_urls = ? WHERE id = ?";
+        String sql = "UPDATE entries SET address = ?, city = ?, state = ?, zipcode = ?, price = ?, description = ?, picture_url = ?, status = ?, picture_urls = ? WHERE id = ?";
         jdbcTemplate.update(sql, entry.getAddress(), entry.getCity(), entry.getState(), entry.getZipcode(),
-            entry.getPrice(), entry.getPictureUrl(), entry.getStatus(), writePictures(entry), entry.getId());
+            entry.getPrice(), entry.getDescription(), entry.getPictureUrl(), entry.getStatus(), writePictures(entry), entry.getId());
         return entry;
     }
 

@@ -1,4 +1,6 @@
-html, body, #app {
+html,
+body,
+#app {
   margin: 0;
   min-height: 100%;
   min-height: 100vh;
@@ -10,14 +12,9 @@ html, body, #app {
   box-sizing: border-box;
 }
 
-button, input {
+button,
+input {
   font: inherit;
-}
-      width: 100%;
-      justify-content: center;
-      box-sizing: border-box;
-    }
-  }
 }
 
 #spacer {

@@ -21,7 +21,10 @@ public class User {
     private Long id;
     private String firstName;
     private String lastName;
+    private String phoneNumber;
     private String email;
+    private String description;
+    private boolean emailVerified = true;
     private Role role = Role.USER;
     @JsonIgnore
     private String passwordHash;
@@ -63,12 +66,36 @@ public class User {
         this.lastName = lastName;
     }
 
+    public String getPhoneNumber() {
+        return phoneNumber;
+    }
+
+    public void setPhoneNumber(String phoneNumber) {
+        this.phoneNumber = phoneNumber;
+    }
+
     public String getEmail() {
         return email;
     }
 
     public void setEmail(String email) {
         this.email = email;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
+    }
+
+    public boolean isEmailVerified() {
+        return emailVerified;
+    }
+
+    public void setEmailVerified(boolean emailVerified) {
+        this.emailVerified = emailVerified;
     }
 
     public Role getRole() {
