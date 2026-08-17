@@ -26,6 +26,7 @@ const savingUserId = ref(null)
 const saveMessage = ref('')
 const searchQuery = ref('')
 const roleFilter = ref('ALL')
+const isReturnTopVisible = ref(false)
 
 const API_URL = '/api/users'
 const STATUS_URL = '/api/health/status'
@@ -49,6 +50,14 @@ const filteredUsers = computed(() => {
 const clearFilters = () => {
   searchQuery.value = ''
   roleFilter.value = 'ALL'
+}
+
+const updateReturnTopVisibility = () => {
+  isReturnTopVisible.value = window.scrollY > 220
+}
+
+const scrollToTop = () => {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 const setStatus = (payload) => {
@@ -203,6 +212,9 @@ const startStatusPolling = () => {
 }
 
 onMounted(() => {
+  updateReturnTopVisibility()
+  window.addEventListener('scroll', updateReturnTopVisibility)
+
   let savedUser
   try {
     savedUser = JSON.parse(localStorage.getItem('user') || 'null')
@@ -220,6 +232,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('scroll', updateReturnTopVisibility)
   if (statusTimer.value) {
     clearInterval(statusTimer.value)
   }
@@ -228,6 +241,15 @@ onBeforeUnmount(() => {
 
 <template>
   <main class="page">
+    <button
+      :class="['return-top', { visible: isReturnTopVisible }]"
+      type="button"
+      aria-label="Return to top"
+      title="Return to top"
+      @click="scrollToTop"
+    >
+      ↑
+    </button>
     <header class="topbar">
       <div>
         <p class="eyebrow">Admin Portal</p>
@@ -409,8 +431,44 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 1.5rem;
   padding: 2rem;
-  background: #f3f4f6;
+  background: linear-gradient(180deg, #eef6ff 0%, #edf4fb 100%);
   font-family: Arial, sans-serif;
+}
+
+.return-top {
+  position: fixed;
+  z-index: 4;
+  left: 1.25rem;
+  bottom: 1.5rem;
+  width: 2.7rem;
+  height: 2.7rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #fffdf8;
+  background: #2563eb;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.24);
+  font: 1.35rem/1 Georgia, serif;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: opacity 0.2s ease, visibility 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.return-top.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.return-top:hover,
+.return-top:focus-visible {
+  background: #1d4ed8;
+  transform: translateY(-3px);
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.28);
 }
 
 .topbar {
@@ -426,16 +484,22 @@ onBeforeUnmount(() => {
 .user-actions {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 
 .home-button {
   padding: 0.8rem 1.1rem;
   border-radius: 10px;
-  color: #374151;
-  background: white;
+  color: #1d4f91;
+  background: linear-gradient(180deg, #edf5ff 0%, #dfeeff 100%);
+  border: 1px solid #bfd8ff;
   font-weight: 700;
   text-decoration: none;
+  box-shadow: 0 4px 12px rgba(96, 123, 167, 0.12);
+}
+.home-button:hover {
+  background: linear-gradient(180deg, #dfeeff 0%, #d1e6ff 100%);
 }
 
 .eyebrow {
@@ -455,9 +519,10 @@ h2 {
 
 .card {
   width: min(960px, 100%);
-  background: white;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(174, 205, 255, 0.8);
   border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 10px 30px rgba(37, 99, 235, 0.08);
   padding: 2rem;
   margin: 0 auto;
 }
@@ -548,6 +613,7 @@ button {
   color: white;
   font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.14);
 }
 
 button:hover {
@@ -704,6 +770,14 @@ button:hover {
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   padding: 0.9rem 1rem;
+  background: #ffffff;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.user-item:has(.edit-form) {
+  background: #eef4ff;
+  border-color: #bfd2f7;
+  box-shadow: 0 0 0 2px rgba(129, 152, 215, 0.12), inset 0 0 0 1px rgba(112, 134, 180, 0.1);
 }
 
 .user-item div {

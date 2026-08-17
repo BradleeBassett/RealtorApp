@@ -33,6 +33,8 @@ const editForm = ref({
 const pictureReading = ref(false)
 const searchQuery = ref('')
 const statusFilter = ref('ALL')
+const selectedIds = ref([])
+const isReturnTopVisible = ref(false)
 const maxAdditionalPictures = 15
 
 const filteredListings = computed(() => {
@@ -52,6 +54,45 @@ const filteredListings = computed(() => {
 const clearFilters = () => {
   searchQuery.value = ''
   statusFilter.value = 'ALL'
+}
+
+const updateReturnTopVisibility = () => {
+  isReturnTopVisible.value = window.scrollY > 220
+}
+
+const scrollToTop = () => {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const toggleSelected = (id) => {
+  const exists = selectedIds.value.includes(id)
+  selectedIds.value = exists
+    ? selectedIds.value.filter((selectedId) => selectedId !== id)
+    : [...selectedIds.value, id]
+}
+
+const deleteSelectedListings = async () => {
+  const ids = [...selectedIds.value]
+  if (!ids.length) return
+
+  if (!window.confirm(`Delete ${ids.length} selected listing${ids.length === 1 ? '' : 's'}?`)) {
+    return
+  }
+
+  try {
+    await Promise.all(
+      ids.map((id) =>
+        fetch(`/api/entries/${id}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders(),
+        }),
+      ),
+    )
+    selectedIds.value = []
+    await loadListings()
+  } catch (err) {
+    error.value = err.message || 'Could not delete selected listings.'
+  }
 }
 
 const readPictures = async (files) => {
@@ -218,6 +259,7 @@ const deleteListing = async (listing) => {
       headers: getAuthHeaders(),
     })
     if (!response.ok) throw new Error('Listing could not be deleted.')
+    selectedIds.value = selectedIds.value.filter((id) => id !== listing.id)
     await loadListings()
   } catch (err) {
     error.value = err.message || 'Could not delete listing.'
@@ -225,6 +267,9 @@ const deleteListing = async (listing) => {
 }
 
 onMounted(async () => {
+  updateReturnTopVisibility()
+  window.addEventListener('scroll', updateReturnTopVisibility)
+
   try {
     await loadListings()
   } catch (err) {
@@ -235,6 +280,15 @@ onMounted(async () => {
 
 <template>
   <main class="listing-page">
+    <button
+      :class="['return-top', { visible: isReturnTopVisible }]"
+      type="button"
+      aria-label="Return to top"
+      title="Return to top"
+      @click="scrollToTop"
+    >
+      ↑
+    </button>
     <header class="topbar">
       <div>
         <p class="eyebrow">Admin Portal</p>
@@ -250,23 +304,23 @@ onMounted(async () => {
       <p class="eyebrow">Add a property</p>
       <h2>Create listing</h2>
       <form class="listing-form" @submit.prevent="submitListing">
-        <label>Address<input v-model="form.address" required type="text" /></label>
+        <label>Property address<input v-model="form.address" required type="text" /></label>
         <label>City<input v-model="form.city" required type="text" /></label>
         <label>State<input v-model="form.state" required maxlength="2" type="text" /></label>
-        <label>Zipcode<input v-model="form.zipcode" required type="text" /></label>
+        <label>ZIP code<input v-model="form.zipcode" required type="text" /></label>
         <label
-          >Price<input v-model="form.price" required min="0" step="0.01" type="number"
+          >Listing price<input v-model="form.price" required min="0" step="0.01" type="number"
         /></label>
-        <label>Description<textarea v-model="form.description" required rows="5"></textarea></label>
+        <label>Property description<textarea v-model="form.description" required rows="5"></textarea></label>
         <label
-          >Landing picture<input
+          >Main listing photo<input
             required
             type="file"
             accept="image/*"
             @change="handleMainPictureChange"
         /></label>
         <label
-          >Additional home pictures<input
+          >Additional home photos<input
             type="file"
             accept="image/*"
             multiple
@@ -317,14 +371,14 @@ onMounted(async () => {
       <h2>Saved listings</h2>
       <div class="listing-filters">
         <label class="search-filter" for="listing-search"
-          >Search properties<input
+          >Search listings<input
             id="listing-search"
             v-model="searchQuery"
             type="search"
-            placeholder="Address, city, or zipcode"
+            placeholder="Address, city, or ZIP code"
         /></label>
         <label for="listing-status-filter"
-          >Status<select id="listing-status-filter" v-model="statusFilter">
+          >Listing status<select id="listing-status-filter" v-model="statusFilter">
             <option value="ALL">All listings</option>
             <option value="ACTIVE">Active</option>
             <option value="CLOSED">Just closed</option>
@@ -338,26 +392,45 @@ onMounted(async () => {
         >
           Clear
         </button>
+        <div class="bulk-actions">
+          <button
+            v-if="selectedIds.length"
+            class="danger"
+            data-testid="delete-selected"
+            type="button"
+            @click="deleteSelectedListings"
+          >
+            Delete selected ({{ selectedIds.length }})
+          </button>
+        </div>
         <span class="filter-count"
           >{{ filteredListings.length }} of {{ listings.length }} listings</span
         >
       </div>
       <ul v-if="filteredListings.length" class="listing-list">
         <li v-for="listing in filteredListings" :key="listing.id">
+          <label class="listing-checkbox-wrap">
+            <input
+              class="listing-select"
+              type="checkbox"
+              :checked="selectedIds.includes(listing.id)"
+              @change="toggleSelected(listing.id)"
+            />
+          </label>
           <template v-if="editingId === listing.id">
             <form class="edit-listing-form" @submit.prevent="updateListing(listing.id)">
-              <label>Address<input v-model="editForm.address" required type="text" /></label>
+              <label>Property address<input v-model="editForm.address" required type="text" /></label>
               <label>City<input v-model="editForm.city" required type="text" /></label>
               <label
                 >State<input v-model="editForm.state" required maxlength="2" type="text"
               /></label>
-              <label>Zipcode<input v-model="editForm.zipcode" required type="text" /></label>
+              <label>ZIP code<input v-model="editForm.zipcode" required type="text" /></label>
               <label
-                >Price<input v-model="editForm.price" required min="0" step="0.01" type="number"
+                >Listing price<input v-model="editForm.price" required min="0" step="0.01" type="number"
               /></label>
-              <label>Description<textarea v-model="editForm.description" required rows="5"></textarea></label>
+              <label>Property description<textarea v-model="editForm.description" required rows="5"></textarea></label>
               <label
-                >Replace pictures<input
+                >Replace photos<input
                   type="file"
                   accept="image/*"
                   multiple
@@ -373,7 +446,7 @@ onMounted(async () => {
                 />
               </div>
               <label
-                >Status<select v-model="editForm.status">
+                >Listing status<select v-model="editForm.status">
                   <option value="ACTIVE">Current active</option>
                   <option value="CLOSED">Just closed</option>
                 </select></label
@@ -421,9 +494,42 @@ onMounted(async () => {
   display: grid;
   gap: 1.5rem;
   padding: 2rem;
-  background: #f3f4f6;
-  color: #111827;
+  background: linear-gradient(180deg, #eef7ee 0%, #edf4f1 100%);
+  color: #1f2d24;
   font-family: Arial, sans-serif;
+}
+.return-top {
+  position: fixed;
+  z-index: 4;
+  left: 1.25rem;
+  bottom: 1.5rem;
+  width: 2.7rem;
+  height: 2.7rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: #fffdf8;
+  background: #5c7f5c;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 8px 20px rgba(56, 82, 59, 0.22);
+  font: 1.35rem/1 Georgia, serif;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: opacity 0.2s ease, visibility 0.2s ease, background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+.return-top.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.return-top:hover,
+.return-top:focus-visible {
+  background: #365b3b;
+  transform: translateY(-3px);
+  box-shadow: 0 10px 22px rgba(56, 82, 59, 0.28);
 }
 .topbar,
 .card {
@@ -438,12 +544,13 @@ onMounted(async () => {
 }
 .topbar-actions {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.75rem;
+  flex-wrap: wrap;
 }
 .eyebrow {
   margin: 0 0 0.35rem;
   color: #3b82f6;
-  font-size: 0.7rem;
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -451,19 +558,23 @@ onMounted(async () => {
 h1,
 h2 {
   margin: 0;
+  font-family: Georgia, 'Times New Roman', serif;
+  letter-spacing: 0.01em;
 }
 h1 {
-  font-size: 2rem;
+  font-size: 2.2rem;
 }
 h2 {
   margin-bottom: 1.2rem;
+  font-size: 1.8rem;
 }
 .card {
   box-sizing: border-box;
   padding: 2rem;
-  background: white;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(114, 144, 120, 0.2);
   border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 10px 30px rgba(62, 94, 70, 0.08);
 }
 .listing-filters {
   display: grid;
@@ -500,6 +611,13 @@ h2 {
   cursor: not-allowed;
   opacity: 0.5;
 }
+.bulk-actions {
+  display: flex;
+  align-items: end;
+}
+.bulk-actions button {
+  width: 100%;
+}
 .filter-count {
   justify-self: end;
   padding-bottom: 0.75rem;
@@ -513,9 +631,12 @@ h2 {
 }
 label {
   display: grid;
-  gap: 0.4rem;
+  gap: 0.45rem;
   color: #374151;
-  font-weight: 600;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 input,
 select {
@@ -525,6 +646,8 @@ select {
   border: 1px solid #d1d5db;
   border-radius: 10px;
   font: inherit;
+  font-size: 0.98rem;
+  text-transform: none;
 }
 button,
 .home-button {
@@ -532,17 +655,22 @@ button,
   border: 0;
   border-radius: 10px;
   color: white;
-  background: #2563eb;
+  background: #5d7a67;
   font-weight: 700;
   text-decoration: none;
   cursor: pointer;
+  box-shadow: 0 6px 16px rgba(93, 122, 103, 0.18);
 }
 button:hover,
 .home-button:hover {
-  background: #1d4ed8;
+  background: #4d6857;
 }
 .listing-form button {
   align-self: end;
+  background: #5b7c5f;
+}
+.listing-form button:hover {
+  background: #45654b;
 }
 .picture-count {
   color: #166534;
@@ -586,11 +714,31 @@ button:hover,
 }
 .listing-list li {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 1rem;
   padding: 0.8rem;
   border: 1px solid #e5e7eb;
   border-radius: 10px;
+  background: #ffffff;
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.listing-list li:has(.edit-listing-form) {
+  background: #eef2f7;
+  border-color: #a9bdd8;
+  box-shadow: 0 0 0 2px rgba(120, 146, 184, 0.14), inset 0 0 0 1px rgba(98, 118, 145, 0.12);
+}
+.listing-checkbox-wrap {
+  display: inline-flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0.25rem 0 0;
+  flex-shrink: 0;
+}
+.listing-select {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: #2563eb;
+  cursor: pointer;
 }
 .listing-list img {
   width: 76px;
@@ -619,6 +767,7 @@ button:hover,
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.8rem;
+  flex: 1;
 }
 .edit-previews {
   grid-column: 1 / -1;
